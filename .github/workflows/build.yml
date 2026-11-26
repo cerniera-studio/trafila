@@ -1,0 +1,80 @@
+name: Build APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Check the signing secret
+        env:
+          CERNIERA_SIGNING_PASSWORD: ${{ secrets.CERNIERA_SIGNING_PASSWORD }}
+        run: |
+          if [ -z "$CERNIERA_SIGNING_PASSWORD" ]; then
+            echo "::error::The org secret CERNIERA_SIGNING_PASSWORD is missing or not shared with this repository, so this build can't be signed with the app's key"
+            exit 1
+          fi
+
+      # Once, on the first build of main: Trafila's own key, encrypted with the org secret, so the
+      # password is never typed or seen anywhere but GitHub. Every later build signs with it.
+      - name: Make the signing key (first build only)
+        if: github.ref == 'refs/heads/main' && hashFiles('signing/trafila-2026.p12') == ''
+        env:
+          CERNIERA_SIGNING_PASSWORD: ${{ secrets.CERNIERA_SIGNING_PASSWORD }}
+        run: |
+          mkdir -p signing
+          keytool -genkeypair -alias trafila -keyalg RSA -keysize 2048 -validity 10000 \
+            -storetype PKCS12 -keystore signing/trafila-2026.p12 \
+            -storepass:env CERNIERA_SIGNING_PASSWORD -keypass:env CERNIERA_SIGNING_PASSWORD \
+            -dname "CN=Cerniera Trafila, O=Cerniera Studio, C=GB"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add signing/trafila-2026.p12
+          git commit -m "Trafila's signing key, made once by the build (encrypted with the org secret)"
+          git push
+
+      - name: Test the rules and build the APK
+        env:
+          CERNIERA_SIGNING_PASSWORD: ${{ secrets.CERNIERA_SIGNING_PASSWORD }}
+        shell: bash
+        run: |
+          set +e
+          gradle testDebugUnitTest assembleDebug --no-daemon 2>&1 | tee build.log
+          status=${PIPESTATUS[0]}
+          grep -E "^e: |What went wrong|^> [^T]|Could not|rror:|FAILED" build.log | grep -v "^> Task" | head -12 | while IFS= read -r line; do echo "::error::${line}"; done
+          exit $status
+
+      - name: Name the APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk Trafila.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Trafila
+          path: Trafila.apk
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: Trafila build ${{ github.run_number }}${{ github.ref != 'refs/heads/main' && format(' ({0})', github.ref_name) || '' }}
+          prerelease: ${{ github.ref != 'refs/heads/main' }}
+          files: Trafila.apk

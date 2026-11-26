@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Trafila</string>
+    <string name="share_link">Add to Trafila</string>
+    <string name="import_list">Import into Trafila</string>
+</resources>
