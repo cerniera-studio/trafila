@@ -12,7 +12,7 @@ class RulesTest {
     @Test fun workingDaysSkipWeekends() {
         assertEquals(0, Rules.workingDays(thu, thu))
         assertEquals(1, Rules.workingDays(thu, thu.plusDays(1)))          // Fri
-        assertEquals(1, Rules.workingDays(thu.plusDays(1), thu.plusDays(3)))   // Fri to Sun
+        assertEquals(0, Rules.workingDays(thu.plusDays(1), thu.plusDays(3)))   // Fri to Sun: the weekend only
         assertEquals(5, Rules.workingDays(thu, thu.plusDays(7)))
         assertEquals(12, Rules.workingDays(LocalDate.of(2026, 11, 10), thu))  // Spinwell: 10 Nov to 26 Nov
         assertEquals(0, Rules.workingDays(thu, thu.minusDays(3)))
